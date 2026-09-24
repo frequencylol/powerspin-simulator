@@ -1,15 +1,9 @@
-const express = require('express');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
-const cors = require('cors');
+const url = require('url');
 
-const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname)));
 
 // Data files for prediction system
 const PREDICTION_DATA_FILE = path.join(__dirname, 'prediction-data.json');
@@ -241,106 +235,159 @@ function runPredictionCycle() {
   console.log(`✅ Prediction generated for draw #${drawId}`);
 }
 
-// API Routes
+// Simple HTTP server
+const server = http.createServer((req, res) => {
+  const parsedUrl = url.parse(req.url, true);
+  const pathname = parsedUrl.pathname;
 
-// Health check endpoint for uptime monitoring
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    lastPrediction: lastPredictionTime ? new Date(lastPredictionTime).toISOString() : null,
-    uptime: process.uptime()
-  });
-});
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-// Get current prediction
-app.get('/api/prediction', (req, res) => {
-  const data = loadPredictionData();
-  if (!data || !data.predictionHistory.length) {
-    return res.json({ prediction: generateRandomPrediction(), type: 'RANDOM' });
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
   }
-  
-  const latestPrediction = data.predictionHistory[0];
-  res.json({
-    drawId: latestPrediction.drawId,
-    wheels: latestPrediction.wheels,
-    type: latestPrediction.type,
-    timestamp: latestPrediction.timestamp
-  });
-});
 
-// Get prediction statistics
-app.get('/api/stats', (req, res) => {
-  const data = loadPredictionData();
-  if (!data) {
-    return res.json({ error: 'No data available' });
-  }
-  
-  const accuracy = data.totalPredictions > 0 
-    ? (data.correctPredictions / data.totalPredictions * 100).toFixed(2) 
-    : 0;
-  
-  res.json({
-    totalPredictions: data.totalPredictions,
-    correctPredictions: data.correctPredictions,
-    accuracy: accuracy + '%',
-    patterns: data.patterns,
-    lastUpdated: data.lastUpdated
-  });
-});
-
-// Submit live result for learning
-app.post('/api/result', (req, res) => {
-  const { drawId, wheels } = req.body;
-  
-  if (!drawId || !wheels || !Array.isArray(wheels)) {
-    return res.status(400).json({ error: 'Invalid data' });
-  }
-  
-  // Store live result
-  const liveResults = loadLiveResults();
-  liveResults.unshift({
-    drawId,
-    wheels,
-    timestamp: Date.now()
-  });
-  saveLiveResults(liveResults);
-  
-  // Update patterns with this result
-  updatePatterns(wheels);
-  
-  // Check if our prediction was correct
-  const data = loadPredictionData();
-  if (data && data.predictionHistory.length > 0) {
-    const latestPrediction = data.predictionHistory[0];
-    if (latestPrediction.drawId === drawId) {
-      const match = wheels.every((w, i) => 
-        w.drawPowerSpinSymbol === latestPrediction.wheels[i].drawPowerSpinSymbol &&
-        w.drawNumber === latestPrediction.wheels[i].drawNumber
-      );
-      
-      if (match) {
-        data.correctPredictions++;
-        savePredictionData(data);
-      }
+  // Serve static files
+  if (pathname === '/' || pathname === '/index.html') {
+    serveStaticFile(res, 'index.html', 'text/html');
+  } else if (pathname === '/style.css') {
+    serveStaticFile(res, 'style.css', 'text/css');
+  } else if (pathname === '/app.js') {
+    serveStaticFile(res, 'app.js', 'application/javascript');
+  } else if (pathname === '/engine.js') {
+    serveStaticFile(res, 'engine.js', 'application/javascript');
+  } else if (pathname === '/powerspin-engine.js') {
+    serveStaticFile(res, 'powerspin-engine.js', 'application/javascript');
+  } 
+  // API Routes
+  else if (pathname === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      lastPrediction: lastPredictionTime ? new Date(lastPredictionTime).toISOString() : null,
+      uptime: process.uptime()
+    }));
+  } else if (pathname === '/api/prediction' && req.method === 'GET') {
+    const data = loadPredictionData();
+    if (!data || !data.predictionHistory.length) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ prediction: generateRandomPrediction(), type: 'RANDOM' }));
+      return;
     }
+    
+    const latestPrediction = data.predictionHistory[0];
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      drawId: latestPrediction.drawId,
+      wheels: latestPrediction.wheels,
+      type: latestPrediction.type,
+      timestamp: latestPrediction.timestamp
+    }));
+  } else if (pathname === '/api/stats' && req.method === 'GET') {
+    const data = loadPredictionData();
+    if (!data) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'No data available' }));
+      return;
+    }
+    
+    const accuracy = data.totalPredictions > 0 
+      ? (data.correctPredictions / data.totalPredictions * 100).toFixed(2) 
+      : 0;
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      totalPredictions: data.totalPredictions,
+      correctPredictions: data.correctPredictions,
+      accuracy: accuracy + '%',
+      patterns: data.patterns,
+      lastUpdated: data.lastUpdated
+    }));
+  } else if (pathname === '/api/result' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const { drawId, wheels } = JSON.parse(body);
+        
+        if (!drawId || !wheels || !Array.isArray(wheels)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid data' }));
+          return;
+        }
+        
+        // Store live result
+        const liveResults = loadLiveResults();
+        liveResults.unshift({
+          drawId,
+          wheels,
+          timestamp: Date.now()
+        });
+        saveLiveResults(liveResults);
+        
+        // Update patterns with this result
+        updatePatterns(wheels);
+        
+        // Check if our prediction was correct
+        const data = loadPredictionData();
+        if (data && data.predictionHistory.length > 0) {
+          const latestPrediction = data.predictionHistory[0];
+          if (latestPrediction.drawId === drawId) {
+            const match = wheels.every((w, i) => 
+              w.drawPowerSpinSymbol === latestPrediction.wheels[i].drawPowerSpinSymbol &&
+              w.drawNumber === latestPrediction.wheels[i].drawNumber
+            );
+            
+            if (match) {
+              data.correctPredictions++;
+              savePredictionData(data);
+            }
+          }
+        }
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Result recorded and patterns updated' }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
+  } else if (pathname === '/api/history' && req.method === 'GET') {
+    const data = loadPredictionData();
+    if (!data) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ history: [] }));
+      return;
+    }
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      history: data.predictionHistory.slice(0, 20),
+      total: data.predictionHistory.length
+    }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
   }
-  
-  res.json({ success: true, message: 'Result recorded and patterns updated' });
 });
 
-// Get prediction history
-app.get('/api/history', (req, res) => {
-  const data = loadPredictionData();
-  if (!data) {
-    return res.json({ history: [] });
-  }
-  
-  res.json({
-    history: data.predictionHistory.slice(0, 20), // Last 20 predictions
-    total: data.predictionHistory.length
+function serveStaticFile(res, filename, contentType) {
+  const filePath = path.join(__dirname, filename);
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('File not found');
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': contentType });
+    res.end(data);
   });
-});
+}
 
 // Initialize and start server
 initPredictionData();
@@ -350,7 +397,7 @@ initLiveResults();
 startPredictionSystem();
 
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 PowerSpin Simulator running on port ${PORT}`);
   console.log(`📊 Prediction system active - generating predictions every 4 minutes`);
   console.log(`💚 Health check: http://localhost:${PORT}/health`);
