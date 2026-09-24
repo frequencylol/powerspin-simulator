@@ -271,13 +271,23 @@ const server = http.createServer((req, res) => {
     serveStaticFile(res, 'powerspin-engine.js', 'application/javascript');
   } 
   // API Routes
-  else if (pathname === '/health' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+  else if (pathname === '/health' && (req.method === 'GET' || req.method === 'HEAD')) {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'X-Health-Check': 'ok'
+    });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
     res.end(JSON.stringify({
       status: 'healthy',
+      service: 'powerspin-simulator',
       timestamp: new Date().toISOString(),
       lastPrediction: lastPredictionTime ? new Date(lastPredictionTime).toISOString() : null,
-      uptime: process.uptime()
+      uptime: process.uptime(),
+      runtime: process.env.VERCEL ? 'vercel-serverless' : 'node'
     }));
   } else if (pathname === '/api/prediction' && req.method === 'GET') {
     // Generate a fresh independent estimate. Do not reuse history: that would
