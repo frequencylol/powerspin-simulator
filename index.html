@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>POWERSPIN Simulator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <span class="logo">POWERSPIN</span>
+        <span class="sub">1:1 · <span id="modeBadge" class="mode-badge live">LIVE MIRROR</span></span>
+        <span class="sub" id="liveStatus" style="font-size:11px;opacity:.7">connecting…</span>
+      </div>
+      <div class="balance-box">
+        <span class="label">Υπόλοιπο</span>
+        <span class="bal" id="balance">€100.00</span>
+      </div>
+      <div class="timer-box">
+        <span class="label">Επόμενη κλήρωση</span>
+        <span class="timer" id="timer">04:00</span>
+      </div>
+    </header>
+
+    <main class="grid">
+      <!-- BET PANEL -->
+      <section class="panel bet-panel">
+        <h2>Νέο Δελτίο</h2>
+
+        <div class="bet-type-tabs" id="betTabs">
+          <button class="tab active" data-type="NUMBER">Αριθμός</button>
+          <button class="tab" data-type="NUMBERS">Πολλαπλοί</button>
+          <button class="tab" data-type="SYMBOL">Σύμβολο</button>
+          <button class="tab" data-type="ZONE">Ζώνη</button>
+          <button class="tab" data-type="OVER">Over</button>
+          <button class="tab" data-type="UNDER">Under</button>
+          <button class="tab" data-type="AT_LEAST_ONE_SYMBOL">≥1 Σύμβολο</button>
+          <button class="tab" data-type="NO_SYMBOL">Χωρίς Σύμβολο</button>
+          <button class="tab" data-type="SAME_NUMBER_2">Ίδιος x2</button>
+          <button class="tab" data-type="SAME_NUMBER_3">Ίδιος x3</button>
+        </div>
+
+        <div id="betConfig" class="bet-config">
+          <!-- dynamic -->
+        </div>
+
+        <div class="stake-row">
+          <label>Ποσό €</label>
+          <div class="stake-btns">
+            <button data-stake="0.5">0.5</button>
+            <button data-stake="1">1</button>
+            <button data-stake="2">2</button>
+            <button data-stake="5">5</button>
+            <button data-stake="10">10</button>
+          </div>
+          <input type="number" id="stakeInput" min="0.5" step="0.5" value="1" />
+        </div>
+
+        <button class="btn primary" id="addBetBtn">Προσθήκη στο Δελτίο</button>
+
+        <div class="ticket-preview">
+          <h3>Δελτίο <span id="ticketCount">0</span></h3>
+          <ul id="ticketList"></ul>
+          <div class="ticket-total">
+            Σύνολο: <strong id="ticketTotal">€0.00</strong>
+          </div>
+          <button class="btn success" id="submitTicketBtn" disabled>ΕΚΔΟΣΗ ΔΕΛΤΙΟΥ</button>
+          <button class="btn ghost" id="clearTicketBtn">Καθαρισμός</button>
+        </div>
+      </section>
+
+      <!-- DRAW / RESULT -->
+      <section class="panel draw-panel">
+        <h2>Κλήρωση</h2>
+        <div class="wheels" id="wheels">
+          <div class="wheel" data-i="0"><div class="face">—</div><div class="meta"></div></div>
+          <div class="wheel" data-i="1"><div class="face">—</div><div class="meta"></div></div>
+          <div class="wheel" data-i="2"><div class="face">—</div><div class="meta"></div></div>
+        </div>
+        <div class="draw-info">
+          <span id="drawId">—</span>
+          <span id="drawStatus">Αναμονή κλήρωσης...</span>
+        </div>
+        <div id="lastResultBanner" class="result-banner hidden"></div>
+
+        <h3 class="mt">Ιστορικό κληρώσεων</h3>
+        <div class="history-scroll" id="drawHistory"></div>
+      </section>
+
+      <!-- TICKETS / HISTORY -->
+      <section class="panel tickets-panel">
+        <h2>Τα Δελτία μου</h2>
+        <div class="stats-row">
+          <span>W: <b id="statWins">0</b></span>
+          <span>L: <b id="statLosses">0</b></span>
+          <span>Staked: <b id="statStaked">€0</b></span>
+          <span>Won: <b id="statWon">€0</b></span>
+        </div>
+        <div class="tickets-scroll" id="ticketsList"></div>
+        <div class="fund-row">
+          <button class="btn ghost" id="addFundsBtn">+ €50</button>
+          <button class="btn ghost" id="forceDrawBtn">Force Local</button>
+          <button class="btn ghost" id="toggleModeBtn">LIVE / LOCAL</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- TOAST -->
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
