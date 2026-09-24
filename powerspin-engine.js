@@ -4,6 +4,8 @@
  * Real payout table + zone mapping from official sources
  */
 
+const crypto = require('crypto');
+
 const ZONES = {
   RED:   [2, 5, 6, 7, 10, 15, 20, 21],
   GREEN: [3, 4, 12, 13, 17, 18, 19, 23],
@@ -48,12 +50,16 @@ function buildWheel() {
 
 const WHEEL = buildWheel();
 
+function unbiasedSlotIndex() {
+  return crypto.randomInt(0, WHEEL.length);
+}
+
 function spinOnce() {
-  const idx = Math.floor(Math.random() * WHEEL.length);
+  const idx = unbiasedSlotIndex();
   const slot = WHEEL[idx];
   if (slot.type === 'SYMBOL') {
     return {
-      drawNumber: 25, // convention from live API (symbol shown as 25)
+      drawNumber: 26, // official API represents the SPIN symbol as 26
       drawPowerSpinOverUnder: 'None',
       drawPowerSpinZone: 'NONE',
       drawPowerSpinSymbol: true,

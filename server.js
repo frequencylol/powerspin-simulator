@@ -2,6 +2,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const url = require('url');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 
@@ -70,12 +71,13 @@ function saveLiveResults(results) {
 
 // Smart prediction algorithm based on historical patterns
 function generateSmartPrediction() {
-  const data = loadPredictionData();
-  if (!data || data.totalPredictions < 10) {
-    // Not enough data, use random
-    return generateRandomPrediction();
-  }
+  // PowerSpin wheels are independent 27-slot draws. Historical outcomes do
+  // not change the next RNG state, so never weight this estimate by history.
+  return generateRandomPrediction();
 
+  /*
+  const data = loadPredictionData();
+  if (!data || data.totalPredictions < 10) return generateRandomPrediction();
   const patterns = data.patterns;
   const totalWheels = data.totalPredictions * 3;
   
@@ -98,7 +100,7 @@ function generateSmartPrediction() {
     
     if (rand < symbolProb) {
       wheels.push({
-        drawNumber: 25,
+        drawNumber: 26,
         drawPowerSpinOverUnder: 'None',
         drawPowerSpinZone: 'NONE',
         drawPowerSpinSymbol: true
@@ -133,6 +135,7 @@ function generateSmartPrediction() {
   }
 
   return wheels;
+  */
 }
 
 function generateRandomPrediction() {
@@ -149,16 +152,17 @@ function generateRandomPrediction() {
 
   const wheels = [];
   for (let i = 0; i < 3; i++) {
-    const isSymbol = Math.random() < 3/27; // 3 symbols out of 27 slots
+    const slot = crypto.randomInt(0, 27);
+    const isSymbol = slot >= 24; // 24 numbers + 3 identical symbol slots
     if (isSymbol) {
       wheels.push({
-        drawNumber: 25,
+        drawNumber: 26,
         drawPowerSpinOverUnder: 'None',
         drawPowerSpinZone: 'NONE',
         drawPowerSpinSymbol: true
       });
     } else {
-      const number = Math.floor(Math.random() * 24) + 1;
+      const number = slot + 1;
       wheels.push({
         drawNumber: number,
         drawPowerSpinOverUnder: number > 12.5 ? 'Over' : 'Under',
@@ -276,20 +280,15 @@ const server = http.createServer((req, res) => {
       uptime: process.uptime()
     }));
   } else if (pathname === '/api/prediction' && req.method === 'GET') {
-    const data = loadPredictionData();
-    if (!data || !data.predictionHistory.length) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ prediction: generateRandomPrediction(), type: 'RANDOM' }));
-      return;
-    }
-    
-    const latestPrediction = data.predictionHistory[0];
+    // Generate a fresh independent estimate. Do not reuse history: that would
+    // make the UI appear to predict an RNG sequence it cannot observe.
+    const timestamp = Date.now();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      drawId: latestPrediction.drawId,
-      wheels: latestPrediction.wheels,
-      type: latestPrediction.type,
-      timestamp: latestPrediction.timestamp
+      drawId: Math.floor(timestamp / 1000),
+      wheels: generateRandomPrediction(),
+      type: 'RNG_ESTIMATE',
+      timestamp
     }));
   } else if (pathname === '/api/stats' && req.method === 'GET') {
     const data = loadPredictionData();
