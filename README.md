@@ -14,10 +14,7 @@ A 1:1 PowerSpin simulator with live mirror functionality and 24/7 prediction sys
 ## Installation
 
 1. Clone the repository
-2. Install dependencies:
-```bash
-npm install
-```
+2. No dependencies required - uses pure Node.js HTTP server
 
 ## Local Development
 
@@ -54,7 +51,7 @@ vercel
 
 3. Follow the prompts to connect to your GitHub repository
 
-4. Set environment variables if needed (none required for basic operation)
+4. No environment variables required - uses pure Node.js
 
 ### Uptime Monitoring
 
