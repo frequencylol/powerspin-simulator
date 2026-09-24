@@ -362,22 +362,45 @@ function boundaryDrawId(boundaryMs) {
   return Math.floor(boundaryMs / 1000);
 }
 
-/** Pre-draw: spin local RNG at the start of a round (like original sim) */
-function preDrawLocal(boundaryMs) {
+/** Pre-draw: use server prediction system or fall back to local RNG */
+async function preDrawLocal(boundaryMs) {
   if (predictedForBoundary && predictedForBoundary.boundary === boundaryMs) return;
 
-  const wheels = drawFull();
   const drawId = boundaryDrawId(boundaryMs);
-  predictedForBoundary = { boundary: boundaryMs, drawId, wheels, source: 'PREDICT' };
+  let wheels;
+  let source = 'PREDICT';
+
+  // Try to get prediction from server
+  try {
+    const response = await fetch('/api/prediction');
+    if (response.ok) {
+      const data = await response.json();
+      if (data.wheels && Array.isArray(data.wheels)) {
+        wheels = data.wheels;
+        source = 'SERVER_' + (data.type || 'PREDICT');
+        console.log('Using server prediction:', data.type);
+      }
+    }
+  } catch (e) {
+    console.log('Server prediction unavailable, using local RNG');
+  }
+
+  // Fallback to local RNG if server prediction fails
+  if (!wheels) {
+    wheels = drawFull();
+    source = 'LOCAL_PREDICT';
+  }
+
+  predictedForBoundary = { boundary: boundaryMs, drawId, wheels, source };
 
   paintWheels([{}, {}, {}], true);
   elDrawStatus.textContent = 'Προβλέψη γύρου…';
-  state.liveStatus = 'PRE-DRAW · local spin for #' + drawId;
+  state.liveStatus = 'PRE-DRAW · ' + source + ' for #' + drawId;
 
   setTimeout(() => {
-    settleWithWheels(wheels, drawId, 'PREDICT');
+    settleWithWheels(wheels, drawId, source);
     elDrawStatus.textContent = 'Προβλέψη κλειδωμένη · αναμονή LIVE επαλήθευσης';
-    state.liveStatus = 'LOCKED PREDICT #' + drawId + ' · waiting official';
+    state.liveStatus = 'LOCKED ' + source + ' #' + drawId + ' · waiting official';
     toast('Προβλέψη γύρου #' + drawId + ' κλειδώθηκε', 'win');
   }, 1400);
 }
@@ -439,6 +462,9 @@ async function verifyLiveAgainstPredict() {
     state.liveStatus = 'LIVE #' + liveId + (predictedForBoundary ? ' · predict missed' : '');
   }
 
+  // Submit result to server for learning
+  submitResultToServer(live.drawId, live.wheels);
+
   // Optional: settle any tickets still PENDING on the official result
   const stillPending = state.tickets.filter(t => t.status === 'PENDING');
   if (stillPending.length) {
@@ -451,16 +477,30 @@ async function verifyLiveAgainstPredict() {
   return true;
 }
 
+/** Submit live result to server for pattern learning */
+async function submitResultToServer(drawId, wheels) {
+  try {
+    await fetch('/api/result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drawId, wheels })
+    });
+    console.log('Result submitted to server for learning');
+  } catch (e) {
+    console.log('Failed to submit result to server:', e);
+  }
+}
+
 async function tryLiveSettle() {
   // kept name for boot call — just verify
   return verifyLiveAgainstPredict();
 }
 
-function localSettle() {
+async function localSettle() {
   // manual force: treat as immediate pre-draw for "now"
   const boundary = currentBoundary(Date.now());
   predictedForBoundary = null;
-  preDrawLocal(boundary);
+  await preDrawLocal(boundary);
   boundaryFired = boundary;
 }
 
@@ -490,7 +530,7 @@ async function tick() {
   if (msLeft <= 3000 && msLeft > 0) {
     const upcoming = next;
     if (!predictedForBoundary || predictedForBoundary.boundary !== upcoming) {
-      preDrawLocal(upcoming);
+      preDrawLocal(upcoming).catch(e => console.log('Pre-draw error:', e));
     }
   }
 
@@ -498,7 +538,7 @@ async function tick() {
     boundaryFired = boundary;
     // If we didn't pre-spin, spin now
     if (!predictedForBoundary || predictedForBoundary.boundary !== boundary) {
-      preDrawLocal(boundary);
+      await preDrawLocal(boundary);
     }
   }
 
@@ -509,7 +549,7 @@ async function tick() {
   }
 }
 
-$('#forceDrawBtn').onclick = () => localSettle();
+$('#forceDrawBtn').onclick = () => localSettle().catch(e => console.log('Force draw error:', e));
 $('#addFundsBtn').onclick = () => {
   state.balance = +(state.balance + 50).toFixed(2);
   refreshHeader();
