@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const url = require('url');
 const crypto = require('crypto');
+const { buildResearchPrediction } = require('./research-predictor');
+const { nextDrawTimestamp } = require('./powerspin-engine');
 
 const PORT = process.env.PORT || 3000;
 
@@ -70,10 +72,9 @@ function saveLiveResults(results) {
 }
 
 // Smart prediction algorithm based on historical patterns
-function generateSmartPrediction() {
-  // PowerSpin wheels are independent 27-slot draws. Historical outcomes do
-  // not change the next RNG state, so never weight this estimate by history.
-  return generateRandomPrediction();
+function generateSmartPrediction(drawTimestamp = Date.now()) {
+  const liveResults = loadLiveResults();
+  return buildResearchPrediction(liveResults, drawTimestamp).wheels;
 
   /*
   const data = loadPredictionData();
@@ -213,12 +214,13 @@ function startPredictionSystem() {
 
 function runPredictionCycle() {
   const now = Date.now();
-  const drawId = Math.floor(now / 1000);
+  const targetTimestamp = nextDrawTimestamp(now);
+  const drawId = Math.floor(targetTimestamp / 1000);
   
   console.log(`🎯 Generating prediction for draw #${drawId} at ${new Date().toISOString()}`);
   
   // Generate smart prediction
-  const prediction = generateSmartPrediction();
+  const prediction = generateSmartPrediction(now);
   
   // Store prediction
   const data = loadPredictionData();
@@ -227,7 +229,8 @@ function runPredictionCycle() {
       drawId,
       wheels: prediction,
       timestamp: now,
-      type: data.totalPredictions >= 10 ? 'SMART' : 'RANDOM'
+      targetTimestamp,
+      type: 'RESEARCH_ENSEMBLE'
     });
     
     // Keep only last 100 predictions
@@ -290,15 +293,19 @@ const server = http.createServer((req, res) => {
       runtime: process.env.VERCEL ? 'vercel-serverless' : 'node'
     }));
   } else if (pathname === '/api/prediction' && req.method === 'GET') {
-    // Generate a fresh independent estimate. Do not reuse history: that would
-    // make the UI appear to predict an RNG sequence it cannot observe.
-    const timestamp = Date.now();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const now = Date.now();
+    const targetTimestamp = nextDrawTimestamp(now);
+    const research = buildResearchPrediction(loadLiveResults(), targetTimestamp);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({
-      drawId: Math.floor(timestamp / 1000),
-      wheels: generateRandomPrediction(),
-      type: 'RNG_ESTIMATE',
-      timestamp
+      drawId: Math.floor(targetTimestamp / 1000),
+      wheels: research.wheels,
+      type: 'RESEARCH_ENSEMBLE',
+      generatedAt: research.generatedAt,
+      targetTimestamp: new Date(targetTimestamp).toISOString(),
+      secondsUntilDraw: Math.ceil((targetTimestamp - now) / 1000),
+      measure: research.measure,
+      engines: research.engines
     }));
   } else if (pathname === '/api/stats' && req.method === 'GET') {
     const data = loadPredictionData();
@@ -369,6 +376,10 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: 'Invalid JSON' }));
       }
     });
+  } else if (pathname === '/api/live-history' && req.method === 'GET') {
+    const liveResults = loadLiveResults();
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ history: liveResults.slice(0, 200), source: 'official-results-posted-by-client', fetchedAt: new Date().toISOString() }));
   } else if (pathname === '/api/history' && req.method === 'GET') {
     const data = loadPredictionData();
     if (!data) {
