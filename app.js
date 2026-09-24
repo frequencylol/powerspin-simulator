@@ -23,6 +23,16 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) Object.assign(state, JSON.parse(raw));
   } catch (_) {}
+  // Older versions stored estimates as if they were official draws. Remove
+  // those rows so the history remains an auditable list of real results.
+  const seen = new Set();
+  state.drawHistory = (state.drawHistory || []).filter((draw) => {
+    if (draw.source !== 'LIVE') return false;
+    const id = String(draw.drawId);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -368,7 +378,7 @@ async function preDrawLocal(boundaryMs) {
 
   const drawId = boundaryDrawId(boundaryMs);
   let wheels;
-  let source = 'PREDICT';
+  let source = state.mode === 'LOCAL' ? 'LOCAL' : 'RNG_ESTIMATE';
 
   // Try to get prediction from server
   try {
@@ -398,10 +408,22 @@ async function preDrawLocal(boundaryMs) {
   state.liveStatus = 'PRE-DRAW · ' + source + ' for #' + drawId;
 
   setTimeout(() => {
-    settleWithWheels(wheels, drawId, source);
-    elDrawStatus.textContent = 'Προβλέψη κλειδωμένη · αναμονή LIVE επαλήθευσης';
-    state.liveStatus = 'LOCKED ' + source + ' #' + drawId + ' · waiting official';
-    toast('Προβλέψη γύρου #' + drawId + ' κλειδώθηκε', 'win');
+    // A prediction is only an estimate. Never write it into draw history or
+    // settle tickets; only the official PowerSpin response can do that.
+    if (state.mode === 'LOCAL') {
+      settleWithWheels(wheels, drawId, 'LOCAL');
+      elDrawStatus.textContent = 'Τοπική προσομοίωση · LOCAL RNG';
+      state.liveStatus = 'LOCAL simulation #' + drawId;
+    } else {
+      paintWheels(wheels, false);
+      elDrawId.textContent = 'Εκτίμηση επόμενης κλήρωσης';
+      elDrawStatus.textContent = 'Εκτίμηση RNG · αναμονή επίσημου αποτελέσματος';
+      state.liveStatus = 'RNG estimate · not official';
+      elBanner.className = 'result-banner';
+      elBanner.style.background = '#2a2040';
+      elBanner.textContent = 'ΕΚΤΙΜΗΣΗ RNG — όχι επίσημο αποτέλεσμα';
+      elBanner.classList.remove('hidden');
+    }
   }, 1400);
 }
 
@@ -421,16 +443,17 @@ async function verifyLiveAgainstPredict() {
     return true;
   }
 
-  // Compare to our prediction if we have one
-  let match = false;
+  // Compare only for transparency; this cannot make the next RNG predictable.
+  let matchCount = 0;
   if (predictedForBoundary && predictedForBoundary.wheels) {
     const a = predictedForBoundary.wheels;
     const b = live.wheels;
-    match = a.length === b.length && a.every((w, i) =>
-      w.drawPowerSpinSymbol === b[i].drawPowerSpinSymbol &&
-      w.drawNumber === b[i].drawNumber
-    );
+    matchCount = a.reduce((count, w, i) => count + (
+      w.drawPowerSpinSymbol === b[i]?.drawPowerSpinSymbol &&
+      w.drawNumber === b[i]?.drawNumber ? 1 : 0
+    ), 0);
   }
+  const match = matchCount === 3;
 
   // Paint official result
   paintWheels(live.wheels, false);
@@ -448,19 +471,13 @@ async function verifyLiveAgainstPredict() {
   });
   renderDrawHistory();
 
-  if (match) {
-    elBanner.className = 'result-banner win';
-    elBanner.textContent = 'ΠΡΟΒΛΕΨΗ = LIVE · exact match';
-    toast('Πρόβλεψη χτύπησε LIVE exact!', 'win');
-    state.liveStatus = 'HIT · predict matched LIVE #' + liveId;
-  } else {
-    elBanner.className = 'result-banner lose';
-    elBanner.textContent = match === false
-      ? 'LIVE ήρθε διαφορετικό από την πρόβλεψη'
-      : 'LIVE αποτέλεσμα φορτώθηκε';
-    elBanner.classList.remove('hidden');
-    state.liveStatus = 'LIVE #' + liveId + (predictedForBoundary ? ' · predict missed' : '');
-  }
+  elBanner.className = 'result-banner';
+  elBanner.style.background = '#2a2040';
+  elBanner.textContent = predictedForBoundary
+    ? `LIVE αποτέλεσμα · ${matchCount}/3 τροχοί συνέπεσαν τυχαία με την εκτίμηση`
+    : 'LIVE αποτέλεσμα φορτώθηκε';
+  elBanner.classList.remove('hidden');
+  state.liveStatus = 'LIVE #' + liveId + (predictedForBoundary ? ` · estimate ${matchCount}/3` : '');
 
   // Submit result to server for learning
   submitResultToServer(live.drawId, live.wheels);
