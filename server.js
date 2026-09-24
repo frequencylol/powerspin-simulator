@@ -5,12 +5,15 @@ const url = require('url');
 
 const PORT = process.env.PORT || 3000;
 
-// Data files for prediction system
-const PREDICTION_DATA_FILE = path.join(__dirname, 'prediction-data.json');
-const LIVE_RESULTS_FILE = path.join(__dirname, 'live-results.json');
+// Vercel function filesystems are read-only outside /tmp. Keep local development
+// data beside the app, but use the writable temporary directory in production.
+const DATA_DIRECTORY = process.env.VERCEL ? '/tmp/powerspin-simulator' : __dirname;
+const PREDICTION_DATA_FILE = path.join(DATA_DIRECTORY, 'prediction-data.json');
+const LIVE_RESULTS_FILE = path.join(DATA_DIRECTORY, 'live-results.json');
 
 // Initialize prediction data
 function initPredictionData() {
+  fs.mkdirSync(DATA_DIRECTORY, { recursive: true });
   if (!fs.existsSync(PREDICTION_DATA_FILE)) {
     const initialData = {
       totalPredictions: 0,
